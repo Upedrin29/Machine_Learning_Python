@@ -1,3 +1,5 @@
+
+
 import pandas as pd
 import numpy as np
 import nltk
@@ -7,7 +9,6 @@ import spacy
 
 #Divide seus dados em conjunto de treino
 from sklearn.model_selection import train_test_split
-
 
 #algoritmo de classificação que cria muitas árvores de decisão e combina os votos delas.
 from sklearn.ensemble import RandomForestClassifier
@@ -21,12 +22,21 @@ from sklearn.linear_model import LogisticRegression
 #algoritmo de classificação 
 from sklearn.naive_bayes import MultinomialNB
 
-
 #Gera um relatório de avaliação com precisão, recall, F1-score e acurácia para cada classe.
 from sklearn.metrics import classification_report
 
 #Salva e carrega o modelo treinado em arquivo
 import joblib
+
+# trabalha com expressões regulares(REGEX): uma linguagem de padrões para procurar, extrair e substituir trechos de texto.
+import re
+
+# normalização de caracteres
+import unicodedata
+
+# tokenização
+from nltk.tokenize import word_tokenize
+
 
 
 # Downloads essenciais para viabilizar as ferramentas de NLP do NLTK
@@ -38,6 +48,9 @@ nltk.download('stopwords')
 # Carregamento do modelo de português do spaCy (exige instalação prévia: python -m spacy download pt_core_news_sm)
 nlp = spacy.load("pt_core_news_sm")
 
+
+
+# ================================================================================================
 
 
 #Funções para leitura dos dados 
@@ -140,3 +153,76 @@ df = carregar_dados(caminho_base_dataset)
 df_treino, df_validacao, df_teste = separar_dados(df)
 
 display(df_treino, df_validacao, df_teste)
+
+
+# =====================================================================================================
+
+
+# Conjuntos de busca otimizada O(1), criados uma única vez 
+VOGAIS = set("aeiouáéíóúâêôãõà")
+CONSOANTES = set("bcçdfghjklmnpqrstvwxyz")  
+
+# A sílaba canônica é CV em termos de som, digrafos representam um único som consonantal
+# cria e guarda um padrão pronto para uso transforma o texto do padrão em um objeto "compilado"
+DIGRAFOS = re.compile(r"ch|lh|nh|rr|ss|qu(?=[eéêií])|gu(?=[eéêií])")
+
+
+# ---------- função para criar feature de canonicidade : 
+
+def calcular_canonicidade(texto):
+    """
+    Recebe um texto bruto, tokeniza, avalia a estrutura CV de cada palavra
+    e retorna a proporção de palavras canônicas.
+    """
+    # padroniza a forma como os caracteres acentuados são armazenados.
+    # junta tudo na forma composta, deixando cada letra acentuada como um único caractere.
+    texto = unicodedata.normalize("NFC", texto.lower())
+
+    tokens = word_tokenize(texto, language='portuguese')
+
+    palavras = [p for p in tokens if p.isalpha()]
+
+    # Prevenção de divisão por zero caso o texto só contenha símbolos
+    if not palavras:
+        return 0.0
+
+    total_canonicas = 0
+
+    # 2. Avaliação estrutural de cada palavra isolada
+    for palavra in palavras:
+      
+        # procura todas as ocorrências do padrão em palavra e troca cada uma por "b"
+        # "b" é só um marcador o objetivo é que o dígrafo (dois caracteres) passe a ocupar a posição de uma consoante só
+        palavra = DIGRAFOS.sub("b", palavra)
+
+        # Regra 1: Palavras com formato estrito CV possuem tamanho par
+        if len(palavra) % 2 != 0:
+            continue
+
+        e_canonica = True
+
+        # Regra 2 e 3: Verificação alternada de Consoante e Vogal
+        for i, letra in enumerate(palavra):
+            # Se o índice é par (0, 2, 4...), a letra TEM que ser consoante
+            if i % 2 == 0 and letra not in CONSOANTES:
+                e_canonica = False
+                break
+            # Se o índice é ímpar (1, 3, 5...), a letra TEM que ser vogal
+            elif i % 2 != 0 and letra not in VOGAIS:
+                e_canonica = False
+                break
+
+        if e_canonica:
+            total_canonicas += 1
+
+    # 3. Retorna a proporção de palavras canônicas (Feature para o modelo ML)
+    return total_canonicas / len(palavras)
+
+
+# ---------- adicionando features aos df's: 
+for df_ in (df_treino, df_validacao, df_teste):
+    df_["canonicidade"] = df_["texto"].apply(calcular_canonicidade)
+
+
+
+
