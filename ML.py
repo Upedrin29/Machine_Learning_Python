@@ -38,7 +38,6 @@ import unicodedata
 from nltk.tokenize import word_tokenize
 
 
-
 # Downloads essenciais para viabilizar as ferramentas de NLP do NLTK
 nltk.download('punkt')
 nltk.download('punkt_tab')
@@ -50,7 +49,8 @@ nlp = spacy.load("pt_core_news_sm")
 
 
 
-# ================================================================================================
+# ============================== carregar e dividir dados ==================================================================
+
 
 
 #Funções para leitura dos dados 
@@ -152,10 +152,12 @@ caminho_base_dataset = Path(r"c:\Users\pedro\Downloads\Prova de seleção\data
 df = carregar_dados(caminho_base_dataset)
 df_treino, df_validacao, df_teste = separar_dados(df)
 
-display(df_treino, df_validacao, df_teste)
+#display(df_treino, df_validacao, df_teste)
 
 
-# =====================================================================================================
+
+# ============================ criando feature de palavras canonicas ===============================================================
+
 
 
 # Conjuntos de busca otimizada O(1), criados uma única vez 
@@ -166,8 +168,6 @@ CONSOANTES = set("bcçdfghjklmnpqrstvwxyz")
 # cria e guarda um padrão pronto para uso transforma o texto do padrão em um objeto "compilado"
 DIGRAFOS = re.compile(r"ch|lh|nh|rr|ss|qu(?=[eéêií])|gu(?=[eéêií])")
 
-
-# ---------- função para criar feature de canonicidade : 
 
 def calcular_canonicidade(texto):
     """
@@ -219,10 +219,128 @@ def calcular_canonicidade(texto):
     return total_canonicas / len(palavras)
 
 
-# ---------- adicionando features aos df's: 
-for df_ in (df_treino, df_validacao, df_teste):
-    df_["canonicidade"] = df_["texto"].apply(calcular_canonicidade)
+
+
+# ================== Criando Features =========================================================================================
 
 
 
+# utilizando biblioteca de NLP spaCY pois aqui ela facilita o uso do pos_taggin para classificar gramaticalmente 
+nlp = spacy.load("pt_core_news_sm", disable=["ner", "lemmatizer"])
 
+
+# ---------- Constantes (criadas uma única vez) ----------
+
+# Passo 1: padrões de pontuação
+PADROES_PONTUACAO = {
+    "virgula":       re.compile(r","),
+    "ponto_final":   re.compile(r"(?<!\.)\.(?!\.)"),   # ignora pontos de reticências
+    "reticencias":   re.compile(r"\.{3}|…"),
+    "interrogacao":  re.compile(r"\?"),
+    "exclamacao":    re.compile(r"!"),
+    "ponto_virgula": re.compile(r";"),
+    "dois_pontos":   re.compile(r":"),
+    "aspas":         re.compile(r"[\"“”«»]"),
+    "parenteses":    re.compile(r"[()]"),
+    "travessao":     re.compile(r"[—–]"),
+}
+
+# Passo 3: classes gramaticais (etiquetas universais do spaCy)
+CLASSES_POS = ["NOUN", "VERB", "ADJ", "ADV", "PRON", "DET", "ADP",
+               "CCONJ", "SCONJ", "AUX", "NUM", "PROPN", "INTJ"]
+
+# Nomes de todas as features, em ordem fixa
+NOMES_FEATURES = (
+    [f"punct_{nome}" for nome in PADROES_PONTUACAO]
+    + ["sent_tam_medio", "sent_tam_desvio"]
+    + [f"pos_{tag}" for tag in CLASSES_POS]
+    + ["canonicidade"]
+)
+
+
+def extrair_features_nlp(texto):
+
+    # ---------------- PASSO 0 ----------------
+    # nlp(texto) roda o pipeline do spaCy (tokenizador, etiquetador gramatical,
+    # parser de sentenças) e devolve um objeto "doc": o texto já analisado.
+    # Fazemos isso UMA vez e reaproveitamos o doc em todos os passos.
+    doc = nlp(texto)
+
+    # "for t in doc" percorre todos os tokens (palavras E pontuação).
+    # "if t.is_alpha" mantém só os que são formados por letras, descartando
+    # vírgulas, pontos, números etc. O resultado é uma lista de tokens-palavra.
+    palavras = [t for t in doc if t.is_alpha]
+
+    # Quantidade de palavras: será o denominador de todas as proporções.
+    n_palavras = len(palavras)
+
+    # Texto sem nenhuma palavra: devolve o vetor zerado, com as mesmas chaves,
+    # para não quebrar o DataFrame depois.
+    if n_palavras == 0:
+        return {nome: 0.0 for nome in NOMES_FEATURES}
+
+    features = {}   # dicionário que vai guardar "nome da feature -> valor"
+
+    # ---------------- PASSO 1 (sem spaCy) ----------------
+    # Conta a pontuação com regex no texto cru, dividindo por n_palavras.
+    for nome, padrao in PADROES_PONTUACAO.items():
+        features[f"punct_{nome}"] = len(padrao.findall(texto)) / n_palavras
+
+    # ---------------- PASSO 2: sentenças (spaCy) ----------------
+    # doc.sents entrega as sentenças que o spaCy identificou.
+    # Para cada sentença ("sent"), percorremos seus tokens ("for t in sent")
+    # e somamos 1 para cada token que é palavra (t.is_alpha).
+    # Resultado: uma lista com o nº de palavras de cada sentença, ex.: [4, 6, 3].
+    tamanhos = [sum(1 for t in sent if t.is_alpha) for sent in doc.sents]
+
+    # Descarta sentenças sem palavras (ex.: uma sentença que é só "...").
+    tamanhos = [n for n in tamanhos if n > 0]
+
+    # Média e desvio-padrão do tamanho das sentenças.
+    features["sent_tam_medio"] = float(np.mean(tamanhos))
+    features["sent_tam_desvio"] = float(np.std(tamanhos))
+
+    # ---------------- PASSO 3: classes gramaticais (spaCy) ----------------
+    # Cria um "placar" com todas as classes da nossa lista começando em 0:
+    # {"NOUN": 0, "VERB": 0, "ADJ": 0, ...}
+    # Fixar as classes garante que TODO texto gere as mesmas colunas.
+    contagem_pos = {tag: 0 for tag in CLASSES_POS}
+
+    # Percorre cada palavra do texto, uma de cada vez.
+    for token in palavras:
+        # token.pos_ é a classe gramatical que o spaCy atribuiu (ex.: "NOUN").
+        # Só contamos se ela estiver na nossa lista; classes fora dela
+        # (PART, SYM, X) são ignoradas, o que evita erro de chave inexistente.
+        if token.pos_ in contagem_pos:
+            # Soma 1 ao placar daquela classe.
+            contagem_pos[token.pos_] += 1
+
+    # Converte o placar em proporções e guarda no dicionário de features.
+    # contagem_pos.items() devolve pares (chave, valor), ex.: ("NOUN", 5).
+    # O "for tag, contagem in ..." desempacota cada par em duas variáveis.
+    for tag, contagem in contagem_pos.items():
+        features[f"pos_{tag}"] = contagem / n_palavras
+
+    # ---------------- PASSO 4 (NLTK, via função própria) ----------------
+    features["canonicidade"] = calcular_canonicidade(texto)
+
+    return features
+
+
+# ======================= Adicionar Features ao DFs ===========================================================
+
+
+
+def adicionar_features(df):
+    """Aplica extrair_features_nlp a cada texto e anexa as colunas ao DataFrame."""
+    features = pd.DataFrame(
+        [extrair_features_nlp(t) for t in df["texto"]],
+        index=df.index,
+    )
+    return pd.concat([df, features], axis=1)
+
+df_treino    = adicionar_features(df_treino)
+df_validacao = adicionar_features(df_validacao)
+df_teste     = adicionar_features(df_teste)
+
+# print(df_treino.groupby("complexidade")[NOMES_FEATURES].mean().T)
