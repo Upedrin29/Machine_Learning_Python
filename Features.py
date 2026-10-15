@@ -2,7 +2,7 @@
 # que o modelo SVC espera receber. Usado pelo app (app.py) na hora da classificação.
 
 
-# ============================== bibliotecas e importações ==================================================================
+# ============================== BIBLIOTECAS E IMPORTAÇÕES ===========================================================================
 
 
 # Biblioteca de cálculo numérico: usada para média (np.mean) e desvio-padrão (np.std) dos tamanhos
@@ -34,7 +34,7 @@ nlp = spacy.load("pt_core_news_sm", disable=["ner"])
 
 
 
-# ============================ criando feature de palavras canonicas ===============================================================
+# ============================ CRIANDO FEATURES DE PALAVRAS CANÔNICAS ===============================================================
 
 
 
@@ -102,7 +102,7 @@ def calcular_canonicidade(texto):
 
 
 
-# ================== Criando Features =========================================================================================
+# ===================================== CRIANDO FEATURES ====================================================================
 
 
 
@@ -161,7 +161,7 @@ def extrair_features_nlp(texto):
     features = {}   # dicionário que vai guardar "nome da feature -> valor"
 
 
-    # ================== Features Estruturais =========================================
+    # ========================== Features Estruturais =================================
 
 
     # ---------------- Feature de pontução  ----------------
@@ -210,7 +210,7 @@ def extrair_features_nlp(texto):
         features[f"pos_{tag}"] = contagem / n_palavras
 
 
-    # ================== Features Lexicais ===============================================
+    # ========================== Features Lexicais ===================================
 
     # padronizando minusculas
     formas = [t.text.lower() for t in palavras]
