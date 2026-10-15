@@ -226,7 +226,7 @@ def calcular_canonicidade(texto):
 
 
 # utilizando biblioteca de NLP spaCY pois aqui ela facilita o uso do pos_taggin para classificar gramaticalmente 
-nlp = spacy.load("pt_core_news_sm", disable=["ner", "lemmatizer"])
+nlp = spacy.load("pt_core_news_sm", disable=["ner"])  
 
 
 # ---------- Constantes (criadas uma única vez) ----------
@@ -254,6 +254,8 @@ NOMES_FEATURES = (
     [f"punct_{nome}" for nome in PADROES_PONTUACAO]
     + ["sent_tam_medio", "sent_tam_desvio"]
     + [f"pos_{tag}" for tag in CLASSES_POS]
+    + ["lex_tam_medio_palavra", "lex_desvio_tam_palavra",
+       "lex_prop_palavras_longas", "lex_ttr_300"]
     + ["canonicidade"]
 )
 
@@ -281,12 +283,19 @@ def extrair_features_nlp(texto):
 
     features = {}   # dicionário que vai guardar "nome da feature -> valor"
 
-    # ---------------- PASSO 1 (sem spaCy) ----------------
+
+    # ================== Features Estruturais =========================================
+
+
+    # ---------------- Feature de pontução  ----------------
+
     # Conta a pontuação com regex no texto cru, dividindo por n_palavras.
     for nome, padrao in PADROES_PONTUACAO.items():
         features[f"punct_{nome}"] = len(padrao.findall(texto)) / n_palavras
 
-    # ---------------- PASSO 2: sentenças (spaCy) ----------------
+
+    # ---------------- Feature de tamanho medio sentenças (spaCy) ----------------
+
     # doc.sents entrega as sentenças que o spaCy identificou.
     # Para cada sentença ("sent"), percorremos seus tokens ("for t in sent")
     # e somamos 1 para cada token que é palavra (t.is_alpha).
@@ -300,7 +309,9 @@ def extrair_features_nlp(texto):
     features["sent_tam_medio"] = float(np.mean(tamanhos))
     features["sent_tam_desvio"] = float(np.std(tamanhos))
 
-    # ---------------- PASSO 3: classes gramaticais (spaCy) ----------------
+
+    # ----------------- Feature de classes gramaticais (spaCy) ----------------
+
     # Cria um "placar" com todas as classes da nossa lista começando em 0:
     # {"NOUN": 0, "VERB": 0, "ADJ": 0, ...}
     # Fixar as classes garante que TODO texto gere as mesmas colunas.
@@ -321,10 +332,35 @@ def extrair_features_nlp(texto):
     for tag, contagem in contagem_pos.items():
         features[f"pos_{tag}"] = contagem / n_palavras
 
-    # ---------------- PASSO 4 (NLTK, via função própria) ----------------
+
+    # ================== Features Lexicais ===============================================
+
+    # padronizando minusculas
+    formas = [t.text.lower() for t in palavras]
+    # Tamanho das palavras 
+    tamanhos_pal = [len(f) for f in formas]
+
+
+    # --------- Feature Comprimento médio e variação do comprimento das palavras ----------------
+    features["lex_tam_medio_palavra"] = float(np.mean(tamanhos_pal))
+    features["lex_desvio_tam_palavra"] = float(np.std(tamanhos_pal))
+
+
+    # -------- Feature Proporção de palavras longas (mais de 6 letras) -----------------------
+    features["lex_prop_palavras_longas"] = sum(1 for n in tamanhos_pal if n > 6) / n_palavras
+
+
+    # ---------- Feature TTR nas primeiras 300 palavras: palavras distintas / palavras da janela ---------
+    janela = formas[:300]
+    features["lex_ttr_300"] = len(set(janela)) / len(janela)
+
+
+    # ---------------- Feature de canonicidade (NLTK, via função própria) ----------------
     features["canonicidade"] = calcular_canonicidade(texto)
 
+
     return features
+
 
 
 # ======================= Adicionar Features ao DFs ===========================================================
@@ -333,6 +369,7 @@ def extrair_features_nlp(texto):
 
 def adicionar_features(df):
     """Aplica extrair_features_nlp a cada texto e anexa as colunas ao DataFrame."""
+    df = df.drop(columns=[c for c in NOMES_FEATURES if c in df.columns])  # garatinr que colunas de features não serão sobreescritas 
     features = pd.DataFrame(
         [extrair_features_nlp(t) for t in df["texto"]],
         index=df.index,
@@ -342,5 +379,3 @@ def adicionar_features(df):
 df_treino    = adicionar_features(df_treino)
 df_validacao = adicionar_features(df_validacao)
 df_teste     = adicionar_features(df_teste)
-
-# print(df_treino.groupby("complexidade")[NOMES_FEATURES].mean().T)
