@@ -2,3 +2,7 @@ Machine Learning.code-workspace
 modelo_svc_complexidade.joblib
 modelo_svc_complexidade.pkl
 mudança_texto.py
+__pycache__/
+*.pyc
+.venv/
+venv/
