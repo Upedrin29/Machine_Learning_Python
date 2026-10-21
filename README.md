@@ -52,7 +52,6 @@ Matriz de confusão no teste (linhas = classe real, colunas = classe prevista):
 
 Dos 65 erros, 57 ocorrem entre classes adjacentes: o modelo aprendeu uma ordem de complexidade. A maior confusão é entre **Médio e Superior**.
 
-![Resultado final no teste](figuras_relatorio/fig12_teste_final.png)
 
 ## Estrutura do repositório
 
@@ -84,11 +83,8 @@ source .venv/bin/activate          # Linux/macOS
 pip install -r requirements.txt
 ```
 
-O `requirements.txt` já inclui o modelo de português do spaCy (`pt_core_news_sm` 3.8.0). Se preferir instalá-lo à parte:
+O `requirements.txt` já inclui o modelo de português do spaCy (`pt_core_news_sm` 3.8.0). 
 
-```bash
-python -m spacy download pt_core_news_sm
-```
 
 Na primeira execução, `Features.py` baixa os recursos `punkt` e `punkt_tab` do NLTK, o que exige conexão com a internet.
 
@@ -201,7 +197,6 @@ Pontos de aprendizado documentados:
 - O balanceamento de classes redistribuiu os acertos (Fund. II melhorou, Médio e Superior perderam) sem mudar o F1 geral, indicando que o gargalo era a falta de informação nas features.
 - Quatro features de riqueza lexical (MATTR, proporção de hapax, TTR de lemas e entropia) não melhoraram o modelo e foram descartadas.
 
-![Validação simples contra validação cruzada](figuras_relatorio/fig09_validacao_vs_cv.png)
 
 ## Algoritmo de mutação de texto
 
@@ -241,8 +236,8 @@ O relatório técnico completo (dados, metodologia, todos os experimentos, erros
 
 ## Autor
 
-[Seu nome] · [LinkedIn / contato]
+Pedro Henrique Cezário de Melo · [https://www.linkedin.com/in/pedromelo29/] [p.henriquemelo29@gmail.com]
 
 ## Licença
 
-[Definir a licença do repositório]
+Todos os direitos reservados
